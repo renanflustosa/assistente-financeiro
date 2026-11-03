@@ -1,0 +1,23 @@
+{
+  "name": "assistente-financeiro",
+  "description": "CLI que importa extratos bancários (OFX/CSV) e classifica os lançamentos numa planilha de controle financeiro PF + PJ",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test",
+    "check": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.2"
+  }
+}

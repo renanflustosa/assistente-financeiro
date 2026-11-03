@@ -1,0 +1,9 @@
+{
+  "planilha": "controle-financeiro.xlsx",
+  "contas": {
+    "Nubank PF": { "perfil": "nubank-conta" },
+    "Nubank PF Cartão": { "perfil": "nubank-cartao" },
+    "Nubank PJ": { "perfil": "nubank-conta" },
+    "Nubank PJ Cartão": { "perfil": "nubank-cartao" }
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+# Dados pessoais: ficam só na máquina.
+config.json
+regras.json
+extratos/
+*.xlsx
+*.bak
+*.tmp

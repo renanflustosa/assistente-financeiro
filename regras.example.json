@@ -1,0 +1,25 @@
+{
+  "regras": [
+    { "contem": "Pagamento recebido", "ignorar": true },
+    { "contem": "Pagamento de fatura", "conta": "Nubank PF", "categoria": "PF - Pagamento fatura cartão" },
+    { "contem": "Pagamento de fatura", "conta": "Nubank PJ", "categoria": "PJ - Pagamento fatura cartão" },
+    { "contem": "SEU NOME COMPLETO", "conta": "Nubank PJ", "categoria": "PJ - Pró-labore / lucros pagos" },
+    { "contem": "SUA EMPRESA LTDA", "conta": "Nubank PF", "categoria": "PF - Pró-labore / lucros recebidos" },
+    { "contem": "Transferência recebida", "conta": "Nubank PJ", "categoria": "PJ - Faturamento de clientes" },
+    { "contem": ["SIMPLES NACIONAL", "RECEITA FEDERAL", "PGMEI"], "conta": "Nubank PJ", "categoria": "PJ - Impostos (DAS/Simples)" },
+    { "contem": ["RECEITA FEDERAL", "DETRAN", "IPVA", "IPTU"], "conta": "Nubank PF", "categoria": "PF - Impostos (IPVA, IPTU, IR)" },
+    { "contem": "Aplicação RDB", "conta": "Nubank PF", "categoria": "PF - Reserva de emergência" },
+    { "contem": ["XP INVESTIMENTOS", "BTG PACTUAL", "RICO INVESTIMENTOS", "CLEAR CORRETORA", "NU INVEST"], "categoria": "PF - Aporte em FII" },
+    { "contem": ["AMAZON WEB SERVICES", "AWS", "HOSTINGER", "DIGITALOCEAN", "VERCEL", "CLOUDFLARE", "REGISTRO.BR", "HETZNER"], "categoria": "PJ - Infra e hospedagem" },
+    { "contem": ["GITHUB", "OPENAI", "ANTHROPIC", "CLAUDE.AI", "GOOGLE WORKSPACE", "JETBRAINS", "FIGMA", "NOTION", "CANVA"], "categoria": "PJ - Ferramentas e software" },
+    { "contem": ["NETFLIX", "SPOTIFY", "AMAZON PRIME", "PRIMEVIDEO", "DISNEY", "HBO", "GLOBOPLAY", "DEEZER", "YOUTUBE PREMIUM", "GOOGLE ONE", "APPLE.COM"], "categoria": "PF - Assinaturas" },
+    { "contem": ["UDEMY", "ALURA", "COURSERA", "KINDLE", "LIVRARIA", "ESTANTE VIRTUAL"], "categoria": "PF - Educação e livros" },
+    { "contem": ["IFOOD", "IFD*", "RAPPI", "UBER EATS", "ZE DELIVERY", "MCDONALDS", "BURGER KING", "RESTAURANTE", "LANCHONETE", "PADARIA"], "categoria": "PF - Restaurantes e delivery" },
+    { "contem": ["UBER", "99APP", "99 TECNOLOGIA", "POSTO", "SHELL", "IPIRANGA", "ESTACIONAMENTO", "SEM PARAR", "VELOE", "METRORIO", "SUPERVIA"], "categoria": "PF - Transporte" },
+    { "contem": ["SUPERMERCADO", "SUPERMERC", "CARREFOUR", "ASSAI", "ATACADAO", "PAO DE ACUCAR", "GUANABARA", "PREZUNIC", "HORTIFRUTI"], "categoria": "PF - Mercado" },
+    { "contem": ["DROGASIL", "DROGARAIA", "DROGA RAIA", "PACHECO", "DROGARIA", "FARMACIA", "UNIMED", "AMIL", "LABORATORIO"], "categoria": "PF - Saúde" },
+    { "contem": ["ENEL", "CEDAE", "AGUAS DO RIO", "NATURGY", "CLARO", "VIVO"], "categoria": "PF - Contas da casa (luz, água, internet)" },
+    { "contem": ["STEAM", "PLAYSTATION", "XBOX", "NINTENDO", "CINEMARK", "INGRESSO", "SYMPLA"], "categoria": "PF - Lazer" },
+    { "contem": ["MERCADOLIVRE", "MERCADO LIVRE", "SHOPEE", "AMAZON", "MAGALU", "MAGAZINE LUIZA", "ALIEXPRESS", "SHEIN", "AMERICANAS", "KABUM"], "categoria": "PF - Compras pessoais" }
+  ]
+}
