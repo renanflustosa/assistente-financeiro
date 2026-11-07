@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, isAbsolute, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { lerCsv, type PerfilCsv } from './csv.ts';
+import { sugerirAporteDoMes } from './fiis/aporte.ts';
 import { decodificarOfx, lerOfx, type Transacao } from './ofx.ts';
 import { PERFIS } from './perfis.ts';
 import { gerar, ler, modeloPadrao, salvar, type Dados } from './planilha.ts';
@@ -17,7 +18,8 @@ const USO = `Uso:
   node src/main.ts nova                                         cria a planilha vazia
   node src/main.ts importar <extrato...> --conta "<conta>" [--simular]
   node src/main.ts regra "<trecho da descrição>" "<categoria>" [--conta "<conta>"]
-  node src/main.ts atualizar                                    reaplica as regras e regera a planilha`;
+  node src/main.ts atualizar                                    reaplica as regras e regera a planilha
+  node src/main.ts fiis [aporte]                                sugere o aporte do mês em FIIs (carteira.json)`;
 
 function lerConfig(): Config {
   if (!existsSync(ARQ_CONFIG)) throw new Error(`Falta ${ARQ_CONFIG}: copie config.example.json para config.json.`);
@@ -124,6 +126,8 @@ async function principal() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: { conta: { type: 'string' }, simular: { type: 'boolean' } } });
   const [comando, ...args] = positionals;
   if (comando === undefined) return console.log(USO);
+  // FIIs usa só o carteira.json; não exige o config.json da planilha.
+  if (comando === 'fiis') return sugerirAporteDoMes(args[0]);
   const config = lerConfig();
 
   if (comando === 'nova') {

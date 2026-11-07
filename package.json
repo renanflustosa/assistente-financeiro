@@ -1,6 +1,6 @@
 {
   "name": "assistente-financeiro",
-  "description": "CLI que importa extratos bancários (OFX/CSV) e classifica os lançamentos numa planilha de controle financeiro PF + PJ",
+  "description": "CLI que importa extratos bancários (OFX/CSV) e classifica os lançamentos numa planilha de controle financeiro PF + PJ, e sugere o aporte mensal em FIIs",
   "license": "MIT",
   "private": true,
   "type": "module",

@@ -1,0 +1,13 @@
+{
+  "aporte": 1000,
+  "dyMinimo": 0.1,
+  "mesesMinimos": 11,
+  "rendaAlvo": 5000,
+  "fiis": [
+    { "ticker": "MXRF11", "peso": 1, "cotas": 0 },
+    { "ticker": "KNCR11", "peso": 1, "cotas": 0 },
+    { "ticker": "HGLG11", "peso": 1, "cotas": 0 },
+    { "ticker": "XPML11", "peso": 1, "cotas": 0 },
+    { "ticker": "KNRI11", "peso": 1, "cotas": 0 }
+  ]
+}

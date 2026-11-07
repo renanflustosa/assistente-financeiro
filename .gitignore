@@ -6,3 +6,5 @@ extratos/
 *.xlsx
 *.bak
 *.tmp
+# Posição real da carteira de FIIs.
+carteira.json
