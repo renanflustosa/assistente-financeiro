@@ -4,7 +4,7 @@ Minimalista (80/20). `[x]` feito, `[ ]` lacuna, `n/a` não se aplica. Não há L
 
 ## 1. Problema e requisitos
 
-- [x] Problema, usuário e sucesso: importar extratos Nubank (PF/PJ, conta e cartão) para o MySQL sem duplicar e com classificação por regra; sugerir o aporte mensal em FIIs rumo à `rendaAlvo` ([README](README.md)).
+- [x] Problema, usuário e sucesso: lançar ou importar extratos de qualquer banco (OFX ou CSV com perfil; PF/PJ, conta e cartão) para o MySQL sem duplicar e com classificação por regra; sugerir o aporte mensal em FIIs rumo à `renda_alvo` ([README](README.md)).
 - n/a Orçamento de latência e custo: CLI local, sem serviço pago nem SLA; Yahoo Finance não cobra nem pede chave.
 - [x] Dados e aprovação humana: dados pessoais fora do git (`.gitignore`); `--simular` mostra a importação antes de gravar; categoria em branco fica para o usuário decidir; `fiis` só sugere, a compra é do usuário.
 
