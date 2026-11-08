@@ -3,7 +3,7 @@ import type { Transacao } from './ofx.ts';
 
 export type Categoria = { nome: string; escopo: 'PF' | 'PJ'; tipo: 'Entrada' | 'Saída'; motivo: string };
 
-/** Uma linha da aba Lancamentos. `valor` é sempre positivo: o sentido vem da categoria. */
+/** Uma linha da tabela lancamentos. `valor` é sempre positivo: o sentido vem da categoria. */
 export type Lancamento = {
   data: string; // AAAA-MM-DD
   conta: string;
@@ -32,7 +32,7 @@ export function validarRegras(regras: unknown, categorias: Categoria[]): Regra[]
     const trechos = Array.isArray(r.contem) ? r.contem : [r.contem];
     if (trechos.length === 0 || trechos.some((t) => typeof t !== 'string' || t.trim() === '')) erros.push(`regras[${i}].contem deve ser texto ou lista de textos não vazios`);
     if (r.ignorar !== true && r.categoria === undefined) erros.push(`regras[${i}] precisa de "categoria" ou "ignorar": true`);
-    if (r.categoria !== undefined && !nomes.has(r.categoria)) erros.push(`regras[${i}].categoria "${r.categoria}" não existe na aba Config da planilha`);
+    if (r.categoria !== undefined && !nomes.has(r.categoria)) erros.push(`regras[${i}].categoria "${r.categoria}" não existe na tabela categorias`);
   });
   if (erros.length > 0) throw new Error(`regras.json inválido:\n- ${erros.join('\n- ')}`);
   return regras as Regra[];

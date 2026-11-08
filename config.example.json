@@ -1,5 +1,5 @@
 {
-  "planilha": "controle-financeiro.xlsx",
+  "mysql": "mysql://usuario:senha@127.0.0.1:3306/assistente_financeiro",
   "contas": {
     "Nubank PF": { "perfil": "nubank-conta" },
     "Nubank PF Cartão": { "perfil": "nubank-cartao" },
