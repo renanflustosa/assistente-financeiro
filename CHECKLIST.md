@@ -20,8 +20,8 @@ Minimalista (80/20). `[x]` feito, `[ ]` lacuna, `n/a` não se aplica. Não há L
 
 ## 4. Confiabilidade e observabilidade
 
-- [x] Entrada validada: OFX/CSV, `config.json`, `regras.json`, `carteira.json` e o valor do aporte validados com mensagem por campo (`src/ofx.ts`, `src/regras.ts`, `src/main.ts`, `src/fiis/aporte.ts`); resposta do Yahoo checada antes do uso.
-- [x] Escrita segura: a importação grava todos os arquivos num INSERT só e a reclassificação numa transação (`src/banco.ts`); reimportação idempotente pelo ID da transação, com `UNIQUE` em `lancamentos.id_transacao`; o `nova` só cria o que falta.
+- [x] Entrada validada: OFX/CSV, `config.json`, regras e carteira (do banco ou dos JSON importados pelo `nova`), `contas.perfil_csv` e o valor do aporte validados com mensagem por campo (`src/ofx.ts`, `src/regras.ts`, `src/main.ts`, `src/fiis/aporte.ts`); resposta do Yahoo checada antes do uso.
+- [x] Escrita segura: a importação grava todos os arquivos num INSERT só e a reclassificação numa transação (`src/banco.ts`); reimportação idempotente pelo ID da transação, com `UNIQUE` em `lancamentos.id_transacao`; o `nova` só aplica as migrations que faltam (`migrations/`, registradas em `schema_migrations`; banco antigo e banco novo cobertos em `test/banco.test.ts`).
 - [x] Timeout: 15 s por requisição ao Yahoo (`src/fiis/yahoo.ts`); o resto não usa rede.
 - [ ] Retry: uma falha transitória do Yahoo aborta o `fiis`; avaliar 1 retry com backoff só se acontecer na prática.
 - [ ] Falha real vira teste: extrato ou resposta do Yahoo que quebrar o fluxo entra anonimizado em `test/` com o fix.

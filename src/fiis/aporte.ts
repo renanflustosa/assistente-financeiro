@@ -1,9 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { analisar, rendaMensal, sugerirAporte } from './carteira.ts';
 import { cotar } from './yahoo.ts';
 
-type Carteira = {
+/** A carteira de uma pessoa: os parâmetros vêm da tabela pessoas e os FIIs da tabela fiis. */
+export type Carteira = {
   aporte: number;
   dyMinimo: number;
   mesesMinimos: number;
@@ -11,11 +10,8 @@ type Carteira = {
   fiis: { ticker: string; peso: number; cotas: number }[];
 };
 
-const ARQUIVO = join(import.meta.dirname, '..', '..', 'carteira.json');
-
-function lerCarteira(): Carteira {
-  if (!existsSync(ARQUIVO)) throw new Error(`Falta ${ARQUIVO}: copie carteira.example.json para carteira.json.`);
-  const c = JSON.parse(readFileSync(ARQUIVO, 'utf8')) as Carteira;
+/** `origem` nomeia de onde veio a carteira na mensagem de erro. */
+export function validarCarteira(c: Carteira, origem: string): Carteira {
   const positivo = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0;
   const naoNegativo = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
@@ -24,14 +20,14 @@ function lerCarteira(): Carteira {
   if (!positivo(c.dyMinimo) || c.dyMinimo >= 1) erros.push('dyMinimo deve ser uma fração entre 0 e 1 (0.10 = 10%)');
   if (!Number.isInteger(c.mesesMinimos) || c.mesesMinimos < 0 || c.mesesMinimos > 12) erros.push('mesesMinimos deve ser inteiro de 0 a 12');
   if (c.rendaAlvo !== undefined && !positivo(c.rendaAlvo)) erros.push('rendaAlvo deve ser um número > 0');
-  if (!Array.isArray(c.fiis) || c.fiis.length === 0) erros.push('fiis deve ser uma lista não vazia');
+  if (!Array.isArray(c.fiis) || c.fiis.length === 0) erros.push('nenhum FII na carteira');
   for (const [i, f] of (Array.isArray(c.fiis) ? c.fiis : []).entries()) {
     if (typeof f.ticker !== 'string' || !/^[A-Z]{4}\d{2}$/.test(f.ticker)) erros.push(`fiis[${i}].ticker deve ser como MXRF11`);
     if (!naoNegativo(f.peso)) erros.push(`fiis[${i}].peso deve ser um número >= 0`);
     if (!Number.isInteger(f.cotas) || f.cotas < 0) erros.push(`fiis[${i}].cotas deve ser inteiro >= 0`);
   }
   if (new Set(c.fiis?.map((f) => f.ticker)).size !== c.fiis?.length) erros.push('fiis tem ticker repetido');
-  if (erros.length > 0) throw new Error(`carteira.json inválido:\n- ${erros.join('\n- ')}`);
+  if (erros.length > 0) throw new Error(`${origem} inválida:\n- ${erros.join('\n- ')}`);
   return c;
 }
 
@@ -46,8 +42,7 @@ const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' 
 const pct = (v: number) => `${(v * 100).toFixed(1).replace('.', ',')}%`;
 
 /** Comando `fiis [aporte]`: cota a carteira e mostra onde pôr o aporte do mês. */
-export async function sugerirAporteDoMes(arg: string | undefined) {
-  const carteira = lerCarteira();
+export async function sugerirAporteDoMes(carteira: Carteira, arg: string | undefined) {
   const aporte = lerAporte(arg, carteira.aporte);
   const agora = new Date();
   const cotacoes = await Promise.all(carteira.fiis.map((f) => cotar(f.ticker)));

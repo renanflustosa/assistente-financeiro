@@ -2,7 +2,7 @@ import type { PerfilCsv } from './csv.ts';
 
 /**
  * Perfis prontos de CSV por banco. Se o seu banco mudar o formato (ou não estiver aqui),
- * declare o perfil direto no config.json da conta. Contribuições com novos bancos são bem-vindas.
+ * declare o perfil direto em contas.perfil_csv. Contribuições com novos bancos são bem-vindas.
  */
 export const PERFIS: Record<string, PerfilCsv> = {
   // Extrato da conta (PF e PJ): "Data,Valor,Identificador,Descrição", valor com sinal e ponto decimal.

@@ -25,7 +25,7 @@ export function normalizar(s: string): string {
 }
 
 export function validarRegras(regras: unknown, categorias: Categoria[]): Regra[] {
-  if (!Array.isArray(regras)) throw new Error('regras.json: "regras" deve ser uma lista.');
+  if (!Array.isArray(regras)) throw new Error('regras: esperada uma lista.');
   const nomes = new Set(categorias.map((c) => c.nome));
   const erros: string[] = [];
   regras.forEach((r: Regra, i) => {
@@ -34,7 +34,7 @@ export function validarRegras(regras: unknown, categorias: Categoria[]): Regra[]
     if (r.ignorar !== true && r.categoria === undefined) erros.push(`regras[${i}] precisa de "categoria" ou "ignorar": true`);
     if (r.categoria !== undefined && !nomes.has(r.categoria)) erros.push(`regras[${i}].categoria "${r.categoria}" não existe na tabela categorias`);
   });
-  if (erros.length > 0) throw new Error(`regras.json inválido:\n- ${erros.join('\n- ')}`);
+  if (erros.length > 0) throw new Error(`regras inválidas:\n- ${erros.join('\n- ')}`);
   return regras as Regra[];
 }
 
