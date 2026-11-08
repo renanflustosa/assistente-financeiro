@@ -1,31 +1,43 @@
 # assistente-financeiro
 
-CLI que importa extratos bancários (OFX ou CSV) para uma planilha de controle financeiro PF + PJ e classifica cada lançamento por regras simples. Tudo roda na sua máquina, sem acessar banco nem passar senha a terceiros: você baixa o extrato no app do banco e o assistente faz o resto.
+CLI que importa extratos bancários (OFX ou CSV) para um banco MySQL de controle financeiro PF + PJ e classifica cada lançamento por regras simples. Tudo roda na sua máquina, sem acessar banco nem passar senha a terceiros: você baixa o extrato no app do banco e o assistente faz o resto.
 
-A planilha mostra, por mês, o que entrou, o que saiu e por quê (Essencial, Escolha, Imposto, Dívida, Poupança, Investimento), separado em PJ e PF, além de orçamento, dívidas (ordem de quitação avalanche) e patrimônio.
+O `resumo` mostra, por mês, o que entrou, o que saiu e por quê (Essencial, Escolha, Imposto, Dívida, Poupança, Investimento), separado em PJ e PF, além de orçamento, saldo das contas, dívidas (ordem de quitação avalanche) e reserva de emergência.
 
 O módulo de [FIIs](#fiis) diz em quais fundos imobiliários pôr o aporte do mês, para uma carteira de renda mensal.
 
 ## Uso
 
-Requer Node 24 ou mais recente; não há etapa de build.
+Requer Node 24 ou mais recente e um MySQL 8 (local serve); não há etapa de build.
 
 ```bash
 npm install
-cp config.example.json config.json    # contas e caminho da planilha
+cp config.example.json config.json    # URL do MySQL e contas
 cp regras.example.json regras.json    # regras de classificação; ajuste as suas
-node src/main.ts nova                 # cria a planilha
+node src/main.ts nova                 # cria o database, as tabelas e as categorias padrão
 node src/main.ts importar extratos/nubank-pf-2026-11.csv --conta "Nubank PF"
 node src/main.ts importar extratos/fatura-2026-11.csv --conta "Nubank PF Cartão" --simular
+node src/main.ts lancar 10/11 45,90 "iFood" --conta "Nubank PF Cartão" --categoria restaurantes
 node src/main.ts regra "BAR DO ZE" "Lazer"   # cria a regra e já classifica o que estava em branco
 node src/main.ts atualizar            # reaplica as regras depois de editar o regras.json
+node src/main.ts resumo 2026-11       # resumo do mês (sem mês: o atual)
 ```
 
-Depois de cada importação, o assistente lista as descrições que ficaram sem categoria. Crie uma regra para elas ou preencha a coluna Categoria direto na planilha.
+Depois de cada importação, o assistente lista as descrições que ficaram sem categoria. Crie uma regra para elas ou preencha `lancamentos.categoria` direto no banco.
 
-Reimportar o mesmo extrato, ou um período que se sobrepõe, não duplica nada: cada transação ganha um ID (coluna J de Lancamentos), feito do identificador do banco ou de um hash da data, do valor e da descrição.
+Reimportar o mesmo extrato, ou um período que se sobrepõe, não duplica nada: cada transação ganha um ID (`lancamentos.id_transacao`, único), feito do identificador do banco ou de um hash da data, do valor e da descrição.
 
-`config.json`, `regras.json`, `carteira.json`, os extratos e a planilha ficam fora do git porque guardam os seus dados reais.
+`config.json`, `regras.json`, `carteira.json` e os extratos ficam fora do git porque guardam os seus dados reais (e o `config.json`, a senha do MySQL).
+
+## Lançamento manual
+
+Sem extrato, lance cada movimentação com `lancar <data> <valor> "<descrição>" --conta "<conta>"`:
+
+- **Data**: `DD/MM` (ano atual), `DD/MM/AAAA` ou `AAAA-MM-DD`. **Valor**: positivo, vírgula nos centavos (`45,90`, `1.234,56`).
+- **Sentido**: vem da `--categoria` (nome ou trecho único). Sem categoria, é saída, ou entrada com `--entrada`, e as regras do `regras.json` tentam classificar.
+- **Repetido**: lançamento com a mesma data, conta, valor e descrição é recusado; use `--repetir` quando for outro gasto igual. `--simular` mostra sem gravar.
+- **Não misture com importação na mesma conta e período**: o lançamento manual não tem o ID do extrato, então importar o CSV daquele período duplica tudo.
+- **Saldo**: só bate com o do app se todas as movimentações da conta desde `data_saldo` forem lançadas (Pix, tarifas, rendimentos). No cartão, lance as compras; o pagamento da fatura entra só na conta, em "Pagamento fatura cartão".
 
 ## Como baixar o extrato (Nubank)
 
@@ -38,9 +50,9 @@ Outros bancos: OFX funciona sem configuração. Para CSV, declare um perfil (aba
 
 | Campo | O que é |
 |---|---|
-| `planilha` | Caminho do `.xlsx`, relativo à pasta do projeto ou absoluto |
-| `contas` | Uma entrada por conta; o nome aparece na coluna Conta da planilha |
-| `contas.<nome>.perfil` | Como ler o CSV dessa conta: `nubank-conta`, `nubank-cartao` ou um perfil próprio. Opcional para OFX |
+| `mysql` | URL do banco: `mysql://usuario:senha@host:porta/database`. Caracteres especiais da senha vão codificados (`@` = `%40`). O `nova` cria o database se o usuário tiver permissão |
+| `contas` | Uma entrada por conta; o nome é a chave da tabela `contas` (até 60 caracteres) |
+| `contas.<nome>.perfil` | Como ler o CSV dessa conta: `nubank-conta`, `nubank-cartao` ou um perfil próprio. Opcional para OFX. Perfil com `inverterSinal` marca a conta como Cartão |
 
 Perfil próprio de CSV:
 
@@ -75,17 +87,34 @@ Use `valor` (com sinal, negativo = saída) ou o par `entrada`/`saida`. `inverter
 4. **Ignorar**: `ignorar: true` descarta a transação. Use no "Pagamento recebido" da fatura, que é o espelho do pagamento já lançado na conta.
 5. **Sinal**: se a categoria é de Saída e a transação é uma entrada (um estorno, por exemplo), ela fica sem categoria e o assistente avisa.
 
-As categorias são as da aba Config da planilha; o assistente recusa uma regra com categoria que não existe lá. No `regras.example.json`, troque `SEU NOME COMPLETO` e `SUA EMPRESA LTDA` pelos nomes que aparecem nas transferências de pró-labore.
+As categorias são as da tabela `categorias`; o assistente recusa uma regra com categoria que não existe lá. No `regras.example.json`, troque `SEU NOME COMPLETO` e `SUA EMPRESA LTDA` pelos nomes que aparecem nas transferências de pró-labore.
 
-## A planilha
+## O banco
 
-A cada gravação a planilha é regerada pelo código: os valores que você preenche (Config, lançamentos, orçamento planejado, dívidas, patrimônio) são lidos e preservados, mas formatação manual, abas novas, fórmulas editadas, gráficos e imagens se perdem. A versão anterior fica em `.bak`. Feche a planilha no Excel antes de rodar o assistente.
+`node src/main.ts nova` cria o que falta e nunca apaga dados; rode de novo depois de atualizar o assistente. O que o CLI não cobre, edite por SQL (MySQL Workbench, DBeaver ou o cliente `mysql`).
 
-Regras de lançamento estão na aba LEIA-ME. A principal: compras no cartão entram pela fatura, na categoria real; o pagamento da fatura no extrato da conta vai em "Pagamento fatura cartão", que é uma Transferência e não conta como gasto. Assim nada é contado duas vezes.
+| Tabela | O que guarda |
+|---|---|
+| `lancamentos` | Um por transação: `data`, `conta`, `categoria` (NULL = falta classificar), `descricao`, `valor` (sempre positivo), `sentido` (Entrada/Saída), `id_transacao`. Lançamento manual: `id_transacao` NULL |
+| `categorias` | `nome`, `escopo` (PF/PJ), `tipo` (Entrada/Saída), `motivo` e `planejado` (orçamento mensal). Crie as suas com INSERT |
+| `contas` | Criadas a partir do `config.json`. Preencha `titular`, `banco`, `saldo_inicial` + `data_saldo` (saldo no fim desse dia) e, no cartão, `limite` |
+| `titulares` | Quem é o dono de cada conta: `apelido`, `escopo`, `nome`, `documento` (CPF/CNPJ só dígitos) |
+| `cartoes` | Cartões físicos e virtuais de cada conta de cartão (`final`, `nome`, `tipo` Físico/Virtual, `variante`). Só cadastro: a fatura do Nubank não diz qual cartão fez a compra |
+| `dividas` | Uma linha por dívida; atualize `saldo` no fechamento do mês. `juros_mes` em fração (12% a.m. = 0.12) |
+| `patrimonio` | Fechamento mensal (`mes` = dia 1): contas PF/PJ, reserva, FIIs, outros, dívidas |
+| `parametros` | `custo_vida` mensal PF e `meta_meses` da reserva |
+
+Views para consulta: `vw_lancamentos` (lançamento + escopo, motivo e mês) e `vw_saldos` (saldo atual = `saldo_inicial` + lançamentos depois de `data_saldo`). O saldo só bate com o do app se todo extrato da conta desde `data_saldo` foi importado e nenhuma regra `ignorar` descarta transações dessa conta.
+
+Regras de lançamento:
+
+- **Cartão**: compras entram pela fatura, na categoria real; o pagamento da fatura no extrato da conta vai em "Pagamento fatura cartão", que é uma Transferência e não conta como gasto. Assim nada é contado duas vezes.
+- **Pró-labore**: sai na PJ como "PJ - Pró-labore / lucros pagos" e entra na PF como "PF - Pró-labore / lucros recebidos".
+- **Motivo**: Essencial = custo para viver/operar; Escolha = dá para cortar; Imposto; Dívida = parcela/juros; Poupança = reserva e fundos; Investimento = FIIs; Transferência = dinheiro entre suas próprias contas.
 
 ## FIIs
 
-`node src/main.ts fiis` sugere em quais FIIs pôr o aporte do mês, para uma carteira de longo prazo focada em renda mensal. Ele nunca sugere venda: o rebalanceamento acontece só pelos aportes. Não precisa do `config.json` nem da planilha.
+`node src/main.ts fiis` sugere em quais FIIs pôr o aporte do mês, para uma carteira de longo prazo focada em renda mensal. Ele nunca sugere venda: o rebalanceamento acontece só pelos aportes. Não precisa do `config.json` nem do MySQL.
 
 ```bash
 cp carteira.example.json carteira.json # depois preencha com a sua carteira real
@@ -117,7 +146,7 @@ Proventos passados não garantem os futuros. A escolha dos FIIs e dos pesos cont
 ## Checks
 
 ```bash
-node --test                          # testes (extratos, regras, planilha, FIIs)
+node --test                          # testes (extratos, regras, resumo, FIIs; MySQL com TEST_MYSQL_URL)
 node node_modules/typescript/bin/tsc # type-check
 ```
 

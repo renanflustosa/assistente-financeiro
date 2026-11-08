@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Transacao } from '../src/ofx.ts';
-import { CATEGORIAS_PADRAO } from '../src/planilha.ts';
+import { CATEGORIAS_PADRAO } from '../src/categorias.ts';
 import { classificar, importar, reclassificar, validarRegras, type Regra } from '../src/regras.ts';
 
 const cats = CATEGORIAS_PADRAO;
