@@ -1,96 +1,61 @@
 import mysql, { type Connection, type RowDataPacket } from 'mysql2/promise';
-import { CATEGORIAS_PADRAO, MOTIVOS, TIPOS_DIVIDA } from './categorias.ts';
-import type { Categoria, Lancamento } from './regras.ts';
+import { readdirSync, readFileSync } from 'node:fs';
+import { CATEGORIAS_PADRAO } from './categorias.ts';
+import type { Carteira } from './fiis/aporte.ts';
+import type { Categoria, Lancamento, Regra } from './regras.ts';
 import type { Divida, Total } from './resumo.ts';
 
 /**
- * Persistência em MySQL. O banco é a fonte dos dados (categorias, contas, lançamentos, orçamento,
- * dívidas, patrimônio); edite direto por SQL o que o CLI não cobre. O esquema é idempotente:
- * `nova` cria o que falta sem apagar nada.
+ * Persistência em MySQL. O banco é a fonte dos dados (pessoas, contas, regras, carteira de FIIs,
+ * lançamentos, orçamento, dívidas, patrimônio); edite direto por SQL o que o CLI não cobre.
+ * Um database por família: todos que acessam veem tudo, e `pessoas` diz de quem é cada coisa.
+ * O esquema está em migrations/ (um arquivo SQL por versão); `nova` aplica as que faltam sem apagar dados.
  */
 export type Banco = Connection;
 
-const lista = (xs: string[]) => xs.map((x) => mysql.escape(x)).join(',');
+/** Lançamentos de uma pessoa: os das contas dos titulares dela. */
+const DA_PESSOA = 'l.conta IN (SELECT ct.nome FROM contas ct JOIN titulares t ON t.apelido = ct.titular WHERE t.pessoa = ?)';
 
-const ESQUEMA = [
-  `CREATE TABLE IF NOT EXISTS parametros (
-    id TINYINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-    custo_vida DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'Custo de vida mensal PF, base da meta de reserva',
-    meta_meses TINYINT UNSIGNED NOT NULL DEFAULT 6 COMMENT 'Meta de reserva em meses de custo de vida'
-  )`,
-  `INSERT IGNORE INTO parametros (id) VALUES (1)`,
-  `CREATE TABLE IF NOT EXISTS titulares (
-    apelido VARCHAR(60) PRIMARY KEY,
-    escopo ENUM('PF','PJ') NOT NULL,
-    nome VARCHAR(150) NOT NULL COMMENT 'Nome completo ou razão social',
-    documento VARCHAR(14) NULL COMMENT 'CPF ou CNPJ, só dígitos'
-  )`,
-  `CREATE TABLE IF NOT EXISTS contas (
-    nome VARCHAR(60) PRIMARY KEY COMMENT 'O mesmo nome do config.json',
-    titular VARCHAR(60) NULL,
-    banco VARCHAR(60) NULL,
-    tipo ENUM('Conta','Cartão') NOT NULL DEFAULT 'Conta',
-    saldo_inicial DECIMAL(12,2) NULL COMMENT 'Conta: saldo no fim do dia data_saldo; vw_saldos soma os lançamentos posteriores',
-    data_saldo DATE NULL,
-    limite DECIMAL(12,2) NULL COMMENT 'Cartão: limite total',
-    FOREIGN KEY (titular) REFERENCES titulares (apelido) ON UPDATE CASCADE
-  )`,
-  `CREATE TABLE IF NOT EXISTS cartoes (
-    conta VARCHAR(60) NOT NULL,
-    final CHAR(4) NOT NULL COMMENT 'Últimos 4 dígitos',
-    nome VARCHAR(60) NOT NULL COMMENT 'Ex.: Físico, ou o apelido do cartão virtual',
-    tipo ENUM('Físico','Virtual') NOT NULL DEFAULT 'Físico',
-    variante VARCHAR(40) NULL COMMENT 'Ex.: Gold, Micro Business',
-    PRIMARY KEY (conta, final),
-    FOREIGN KEY (conta) REFERENCES contas (nome) ON UPDATE CASCADE
-  )`,
-  `CREATE TABLE IF NOT EXISTS categorias (
-    nome VARCHAR(80) PRIMARY KEY,
-    escopo ENUM('PF','PJ') NOT NULL,
-    tipo ENUM('Entrada','Saída') NOT NULL,
-    motivo ENUM(${lista(MOTIVOS)}) NOT NULL,
-    planejado DECIMAL(12,2) NULL COMMENT 'Orçamento mensal (categorias de Saída)'
-  )`,
-  `CREATE TABLE IF NOT EXISTS lancamentos (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    data DATE NOT NULL,
-    conta VARCHAR(60) NOT NULL,
-    categoria VARCHAR(80) NULL COMMENT 'NULL = falta classificar',
-    descricao VARCHAR(500) NOT NULL,
-    valor DECIMAL(12,2) NOT NULL CHECK (valor > 0) COMMENT 'Sempre positivo; o sentido diz se entrou ou saiu',
-    sentido ENUM('Entrada','Saída') NOT NULL,
-    id_transacao VARCHAR(20) NULL UNIQUE COMMENT 'E-/S-<hash> do extrato, evita importar duas vezes; NULL em lançamento manual',
-    INDEX (conta, data),
-    INDEX (data),
-    FOREIGN KEY (conta) REFERENCES contas (nome) ON UPDATE CASCADE,
-    FOREIGN KEY (categoria) REFERENCES categorias (nome) ON UPDATE CASCADE
-  )`,
-  `CREATE TABLE IF NOT EXISTS dividas (
-    credor VARCHAR(80) PRIMARY KEY,
-    tipo ENUM(${lista(TIPOS_DIVIDA)}) NOT NULL,
-    saldo DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'Atualize no fechamento de cada mês',
-    juros_mes DECIMAL(7,4) NULL COMMENT 'Taxa mensal em fração: 12% a.m. = 0.12 (CET do contrato ou da fatura)',
-    parcela DECIMAL(12,2) NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS patrimonio (
-    mes DATE PRIMARY KEY COMMENT 'Dia 1 do mês do fechamento',
-    contas_pf DECIMAL(12,2) NULL,
-    contas_pj DECIMAL(12,2) NULL,
-    reserva DECIMAL(12,2) NULL,
-    fiis DECIMAL(12,2) NULL COMMENT 'Valor de mercado',
-    outros DECIMAL(12,2) NULL,
-    dividas DECIMAL(12,2) NULL
-  )`,
-  `CREATE OR REPLACE VIEW vw_lancamentos AS
-    SELECT l.id, l.data, DATE_FORMAT(l.data, '%Y-%m') AS mes, l.conta, l.categoria, c.escopo, c.motivo, l.sentido, l.valor, l.descricao, l.id_transacao
-    FROM lancamentos l LEFT JOIN categorias c ON c.nome = l.categoria`,
-  `CREATE OR REPLACE VIEW vw_saldos AS
-    SELECT ct.nome AS conta, ct.titular, ct.data_saldo, ct.saldo_inicial,
-      ct.saldo_inicial + COALESCE(SUM(CASE l.sentido WHEN 'Entrada' THEN l.valor ELSE -l.valor END), 0) AS saldo_atual
-    FROM contas ct LEFT JOIN lancamentos l ON l.conta = ct.nome AND l.data > ct.data_saldo
-    WHERE ct.tipo = 'Conta' AND ct.saldo_inicial IS NOT NULL
-    GROUP BY ct.nome, ct.titular, ct.data_saldo, ct.saldo_inicial`,
-];
+const MIGRATIONS = new URL('../migrations/', import.meta.url);
+
+/** Comandos de um arquivo de migration: sem as linhas de comentário, separados por `;` no fim da linha. */
+function comandos(sql: string): string[] {
+  return sql
+    .replace(/^\s*--.*$/gm, '')
+    .split(/;\s*$/m)
+    .map((c) => c.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Aplica, em ordem, os arquivos `migrations/NNN_nome.sql` que ainda não estão em `schema_migrations`.
+ * DDL no MySQL não tem transação: se um comando falhar, os anteriores do arquivo ficam, e o comentário
+ * no topo do arquivo diz como seguir.
+ */
+async function migrar(db: Banco): Promise<void> {
+  await db.query("CREATE TABLE IF NOT EXISTS schema_migrations (versao VARCHAR(100) PRIMARY KEY, aplicada_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+  const arquivos = readdirSync(MIGRATIONS).filter((f) => /^\d{3}_\w+\.sql$/.test(f)).sort();
+  const [linhas] = await db.query<RowDataPacket[]>('SELECT versao FROM schema_migrations');
+  const feitas = new Set(linhas.map((l) => l.versao as string));
+  if (feitas.size === 0 && (await existeTabela(db, 'lancamentos'))) {
+    // Banco criado antes das migrations: está na 001, ou já na 002 se tiver a tabela pessoas.
+    const base = arquivos.slice(0, (await existeTabela(db, 'pessoas')) ? 2 : 1).map((f) => f.slice(0, -4));
+    await db.query('INSERT INTO schema_migrations (versao) VALUES ?', [base.map((v) => [v])]);
+    for (const v of base) feitas.add(v);
+  }
+  for (const arquivo of arquivos) {
+    const versao = arquivo.slice(0, -4);
+    if (feitas.has(versao)) continue;
+    for (const sql of comandos(readFileSync(new URL(arquivo, MIGRATIONS), 'utf8'))) {
+      try {
+        await db.query(sql);
+      } catch (e) {
+        throw new Error(`A migration migrations/${arquivo} falhou: ${(e as Error).message}. Veja o comentário no topo do arquivo e rode nova de novo.`);
+      }
+    }
+    await db.query('INSERT INTO schema_migrations (versao) VALUES (?)', [versao]);
+  }
+}
 
 function opcoes(url: string): mysql.ConnectionOptions {
   return { uri: url, charset: 'utf8mb4', decimalNumbers: true, dateStrings: true, timezone: 'Z' };
@@ -104,7 +69,7 @@ export async function conectar(url: string): Promise<Banco> {
   }
 }
 
-/** Cria o database (se faltar), as tabelas e as categorias padrão. Não altera o que já existe. */
+/** Cria o database (se faltar), aplica as migrations que faltam e as categorias padrão. Não apaga dados. */
 export async function criarEsquema(url: string): Promise<Banco> {
   const u = new URL(url);
   const nome = decodeURIComponent(u.pathname.slice(1));
@@ -118,7 +83,7 @@ export async function criarEsquema(url: string): Promise<Banco> {
   }
   const db = await conectar(url);
   try {
-    for (const sql of ESQUEMA) await db.query(sql);
+    await migrar(db);
     await db.query('INSERT IGNORE INTO categorias (nome, escopo, tipo, motivo) VALUES ?', [CATEGORIAS_PADRAO.map((c) => [c.nome, c.escopo, c.tipo, c.motivo])]);
     return db;
   } catch (e) {
@@ -128,10 +93,85 @@ export async function criarEsquema(url: string): Promise<Banco> {
   }
 }
 
-/** As contas do config.json precisam existir na tabela contas (chave estrangeira dos lançamentos). */
-export async function sincronizarContas(db: Banco, contas: { nome: string; tipo: 'Conta' | 'Cartão' }[]): Promise<void> {
+export type Conta = { nome: string; tipo: 'Conta' | 'Cartão'; perfil: string | null; perfilCsv: unknown };
+
+export async function lerContas(db: Banco): Promise<Conta[]> {
+  const [linhas] = await db.query<RowDataPacket[]>('SELECT nome, tipo, perfil, perfil_csv AS perfilCsv FROM contas ORDER BY nome');
+  return linhas as Conta[];
+}
+
+export async function lerPessoas(db: Banco): Promise<string[]> {
+  const [linhas] = await db.query<RowDataPacket[]>('SELECT apelido FROM pessoas ORDER BY apelido');
+  return linhas.map((p) => p.apelido as string);
+}
+
+/** Na ordem em que são testadas. Cada linha tem um trecho; categoria e conta já passaram pela chave estrangeira. */
+export async function lerRegras(db: Banco): Promise<Regra[]> {
+  const [linhas] = await db.query<RowDataPacket[]>('SELECT contem, conta, categoria, ignorar FROM regras ORDER BY ordem, id');
+  return linhas.map((r) => ({ contem: r.contem, ...(r.categoria ? { categoria: r.categoria } : {}), ...(r.conta ? { conta: r.conta } : {}), ...(r.ignorar ? { ignorar: true } : {}) }));
+}
+
+/** Uma linha por trecho, todos com a ordem da regra; entram no fim da lista, depois das que já existem. */
+export async function inserirRegras(db: Banco, regras: Regra[]): Promise<void> {
+  if (regras.length === 0) return;
+  const [[r]] = await db.query<RowDataPacket[]>('SELECT COALESCE(MAX(ordem), 0) AS ultima FROM regras');
+  const linhas = regras.flatMap((g, i) => (Array.isArray(g.contem) ? g.contem : [g.contem]).map((t) => [(r!.ultima as number) + (i + 1) * 10, t, g.conta ?? null, g.categoria ?? null, g.ignorar === true]));
+  await db.query('INSERT INTO regras (ordem, contem, conta, categoria, ignorar) VALUES ?', [linhas]);
+}
+
+export async function lerCarteira(db: Banco, pessoa: string): Promise<Carteira> {
+  const [[p]] = await db.query<RowDataPacket[]>('SELECT aporte_fii AS aporte, dy_minimo AS dyMinimo, meses_minimos AS mesesMinimos, renda_alvo AS rendaAlvo FROM pessoas WHERE apelido = ?', [pessoa]);
+  if (!p) throw new Error(`Pessoa "${pessoa}" não existe na tabela pessoas.`);
+  const [fiis] = await db.query<RowDataPacket[]>('SELECT ticker, peso, cotas FROM fiis WHERE pessoa = ? ORDER BY ticker', [pessoa]);
+  return { aporte: p.aporte, dyMinimo: p.dyMinimo, mesesMinimos: p.mesesMinimos, ...(p.rendaAlvo === null ? {} : { rendaAlvo: p.rendaAlvo }), fiis: fiis as Carteira['fiis'] };
+}
+
+// ---------------------------------------------------------------- importação única dos JSON antigos
+
+/** Até 2026-11 as contas ficavam no config.json. Completa o perfil sem sobrescrever o que já está no banco. */
+export async function importarContas(db: Banco, contas: (Omit<Conta, 'perfilCsv'> & { perfilCsv: object | null })[]): Promise<void> {
   if (contas.length === 0) return;
-  await db.query('INSERT IGNORE INTO contas (nome, tipo) VALUES ?', [contas.map((c) => [c.nome, c.tipo])]);
+  await db.query(
+    'INSERT INTO contas (nome, tipo, perfil, perfil_csv) VALUES ? AS n ON DUPLICATE KEY UPDATE perfil = COALESCE(contas.perfil, n.perfil), perfil_csv = COALESCE(contas.perfil_csv, n.perfil_csv)',
+    [contas.map((c) => [c.nome, c.tipo, c.perfil, c.perfilCsv === null ? null : JSON.stringify(c.perfilCsv)])],
+  );
+}
+
+/** Só com a tabela vazia, para não duplicar regras a cada `nova`. Devolve se importou. */
+export async function importarRegras(db: Banco, regras: Regra[]): Promise<boolean> {
+  const [[r]] = await db.query<RowDataPacket[]>('SELECT COUNT(*) AS n FROM regras');
+  if (r!.n > 0 || regras.length === 0) return false;
+  await inserirRegras(db, regras);
+  return true;
+}
+
+/** Só se a pessoa ainda não tem FIIs no banco. Devolve se importou. */
+export async function importarCarteira(db: Banco, pessoa: string, c: Carteira): Promise<boolean> {
+  const [[r]] = await db.query<RowDataPacket[]>('SELECT COUNT(*) AS n FROM fiis WHERE pessoa = ?', [pessoa]);
+  if (r!.n > 0) return false;
+  await db.beginTransaction();
+  try {
+    await db.execute('UPDATE pessoas SET aporte_fii = ?, dy_minimo = ?, meses_minimos = ?, renda_alvo = ? WHERE apelido = ?', [c.aporte, c.dyMinimo, c.mesesMinimos, c.rendaAlvo ?? null, pessoa]);
+    await db.query('INSERT INTO fiis (pessoa, ticker, peso, cotas) VALUES ?', [c.fiis.map((f) => [pessoa, f.ticker, f.peso, f.cotas])]);
+    await db.commit();
+    return true;
+  } catch (e) {
+    await db.rollback();
+    throw e;
+  }
+}
+
+export async function existeTabela(db: Banco, nome: string): Promise<boolean> {
+  const [t] = await db.query<RowDataPacket[]>('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [nome]);
+  return t.length > 0;
+}
+
+/** A antiga tabela `parametros` (uma linha, sem dono) vai para a pessoa e some. Devolve se havia. */
+export async function importarParametros(db: Banco, pessoa: string): Promise<boolean> {
+  if (!(await existeTabela(db, 'parametros'))) return false;
+  await db.execute('UPDATE pessoas p JOIN parametros x ON x.id = 1 SET p.custo_vida = x.custo_vida, p.meta_meses = x.meta_meses WHERE p.apelido = ?', [pessoa]);
+  await db.query('DROP TABLE parametros');
+  return true;
 }
 
 export async function lerCategorias(db: Banco): Promise<Categoria[]> {
@@ -200,37 +240,46 @@ export type DadosMes = {
   orcamento: { categoria: string; motivo: string; planejado: number }[];
   semCategoria: { sentido: 'Entrada' | 'Saída'; quantos: number; total: number }[];
   saldos: { conta: string; dataSaldo: string; saldo: number }[];
-  cartoes: { conta: string; limite: number | null; compras: number }[];
+  cartoes: { conta: string; limiteTotal: number | null; limiteDisponivel: number | null; compras: number }[];
   dividas: Divida[];
-  custoVida: number;
-  metaMeses: number;
+  /** Soma de custo_vida × meta_meses das pessoas consideradas. */
+  metaReserva: number;
+  /** Último fechamento de cada pessoa até o mês, somado; `mes` é o mais antigo deles. */
   reserva?: { mes: string; valor: number };
 };
 
-/** `mes` em AAAA-MM. */
-export async function lerMes(db: Banco, mes: string): Promise<DadosMes> {
+/** `mes` em AAAA-MM. Sem `pessoa`, é a visão da família: soma todas as pessoas. */
+export async function lerMes(db: Banco, mes: string, pessoa?: string): Promise<DadosMes> {
   const de = `${mes}-01`;
   const q = async <T>(sql: string, params: unknown[] = []) => (await db.query<RowDataPacket[]>(sql, params))[0] as T[];
   const noMes = 'l.data >= ? AND l.data < DATE_ADD(?, INTERVAL 1 MONTH)';
-  const [parametros] = await q<{ custo_vida: number; meta_meses: number }>('SELECT custo_vida, meta_meses FROM parametros WHERE id = 1');
-  const [reserva] = await q<{ mes: string; reserva: number }>('SELECT mes, reserva FROM patrimonio WHERE mes <= ? AND reserva IS NOT NULL ORDER BY mes DESC LIMIT 1', [de]);
+  // Filtro opcional: o mesmo trecho de SQL e o parâmetro que ele pede, vazios na visão da família.
+  const so = (sql: string): [string, unknown[]] => (pessoa === undefined ? ['', []] : [` AND ${sql}`, [pessoa]]);
+  const [lanc, pLanc] = so(DA_PESSOA);
+  const [dono, pDono] = so('pessoa = ?');
+  const [metas] = await q<{ meta: number }>(`SELECT COALESCE(SUM(custo_vida * meta_meses), 0) AS meta FROM pessoas WHERE TRUE${so('apelido = ?')[0]}`, pDono);
+  const reservas = await q<{ mes: string; reserva: number }>(
+    `SELECT p.mes, p.reserva FROM patrimonio p
+     WHERE p.mes = (SELECT MAX(x.mes) FROM patrimonio x WHERE x.pessoa = p.pessoa AND x.mes <= ? AND x.reserva IS NOT NULL)${so('p.pessoa = ?')[0]}`,
+    [de, ...pDono],
+  );
   return {
     totais: await q<Total>(
       `SELECT c.escopo, c.tipo, c.motivo, c.nome AS categoria, SUM(l.valor) AS total
-       FROM lancamentos l JOIN categorias c ON c.nome = l.categoria WHERE ${noMes} GROUP BY c.nome, c.escopo, c.tipo, c.motivo`,
-      [de, de],
+       FROM lancamentos l JOIN categorias c ON c.nome = l.categoria WHERE ${noMes}${lanc} GROUP BY c.nome, c.escopo, c.tipo, c.motivo`,
+      [de, de, ...pLanc],
     ),
     orcamento: await q('SELECT nome AS categoria, motivo, planejado FROM categorias WHERE planejado > 0 ORDER BY nome'),
-    semCategoria: await q(`SELECT l.sentido, COUNT(*) AS quantos, SUM(l.valor) AS total FROM lancamentos l WHERE l.categoria IS NULL AND ${noMes} GROUP BY l.sentido`, [de, de]),
-    saldos: await q('SELECT conta, data_saldo AS dataSaldo, saldo_atual AS saldo FROM vw_saldos ORDER BY conta'),
+    semCategoria: await q(`SELECT l.sentido, COUNT(*) AS quantos, SUM(l.valor) AS total FROM lancamentos l WHERE l.categoria IS NULL AND ${noMes}${lanc} GROUP BY l.sentido`, [de, de, ...pLanc]),
+    saldos: await q(`SELECT conta, data_saldo AS dataSaldo, saldo_atual AS saldo FROM vw_saldos WHERE TRUE${dono} ORDER BY conta`, pDono),
     cartoes: await q(
-      `SELECT ct.nome AS conta, ct.limite, COALESCE(SUM(CASE l.sentido WHEN 'Saída' THEN l.valor ELSE -l.valor END), 0) AS compras
-       FROM contas ct LEFT JOIN lancamentos l ON l.conta = ct.nome AND ${noMes} WHERE ct.tipo = 'Cartão' GROUP BY ct.nome, ct.limite ORDER BY ct.nome`,
-      [de, de],
+      `SELECT v.conta, v.limite_total AS limiteTotal, v.limite_disponivel AS limiteDisponivel, COALESCE(SUM(CASE l.sentido WHEN 'Saída' THEN l.valor ELSE -l.valor END), 0) AS compras
+       FROM vw_cartoes v LEFT JOIN lancamentos l ON l.conta = v.conta AND ${noMes} WHERE TRUE${so('v.pessoa = ?')[0]}
+       GROUP BY v.conta, v.limite_total, v.limite_disponivel ORDER BY v.conta`,
+      [de, de, ...pDono],
     ),
-    dividas: await q('SELECT credor, tipo, saldo, juros_mes AS juros, parcela FROM dividas WHERE saldo > 0'),
-    custoVida: parametros?.custo_vida ?? 0,
-    metaMeses: parametros?.meta_meses ?? 0,
-    ...(reserva ? { reserva: { mes: reserva.mes, valor: reserva.reserva } } : {}),
+    dividas: await q(`SELECT credor, tipo, saldo, juros_mes AS juros, parcela FROM dividas WHERE saldo > 0${dono}`, pDono),
+    metaReserva: metas?.meta ?? 0,
+    ...(reservas.length > 0 ? { reserva: { mes: reservas.map((r) => r.mes).sort()[0]!, valor: Math.round(reservas.reduce((s, r) => s + r.reserva, 0) * 100) / 100 } } : {}),
   };
 }
