@@ -2,7 +2,7 @@
 
 CLI de controle financeiro PF + PJ sobre um MySQL local. Você lança as movimentações ou importa o extrato que baixou do seu banco (OFX ou CSV), e o assistente classifica cada lançamento por regras simples. Tudo roda na sua máquina: nada acessa o seu banco nem pede senha dele.
 
-O `resumo` mostra, por mês, o que entrou, o que saiu e por quê (Essencial, Escolha, Imposto, Dívida, Poupança, Investimento), separado em PJ e PF, além de orçamento, saldo das contas, dívidas (ordem de quitação avalanche) e reserva de emergência. O módulo de [FIIs](#fiis) diz em quais fundos imobiliários pôr o aporte do mês.
+O `resumo` mostra, por mês, o que entrou, o que saiu e por quê (Essencial, Escolha, Imposto, Dívida, Cartão, Poupança, Investimento), separado em PJ e PF, além de orçamento, saldo das contas, dívidas (ordem de quitação avalanche) e reserva de emergência. O módulo de [FIIs](#fiis) diz em quais fundos imobiliários pôr o aporte do mês.
 
 ## Uso
 
@@ -56,7 +56,7 @@ INSERT INTO contas (nome, titular, banco, tipo) VALUES
 - **Sentido**: vem da `--categoria` (nome ou trecho único). Sem categoria, é saída (ou entrada com `--entrada`) e as regras tentam classificar.
 - **Repetido**: a mesma data, conta, valor e descrição é recusada; use `--repetir` para outro gasto igual. `--simular` mostra sem gravar.
 - **Não misture** lançamento manual e importação na mesma conta e período: o manual não tem o ID do extrato, então a importação duplicaria.
-- **Saldo**: só bate com o do banco se todas as movimentações desde `contas.data_saldo` forem lançadas. No cartão, lance as compras; o pagamento da fatura entra só na conta, em "Pagamento fatura cartão".
+- **Saldo**: só bate com o do banco se todas as movimentações desde `contas.data_saldo` forem lançadas. Do cartão, lance só o pagamento da fatura, na conta, em "Pagamento fatura cartão".
 
 ## Extratos
 
@@ -126,9 +126,9 @@ Views, todas com a coluna `pessoa`: `vw_lancamentos` (lançamento com escopo, mo
 
 Como lançar sem contar nada duas vezes:
 
-- **Cartão**: a compra entra no cartão, na categoria real; o pagamento da fatura sai da conta em "Pagamento fatura cartão", uma Transferência, que não conta como gasto.
+- **Cartão**: o gasto é a fatura paga, que sai da conta em "Pagamento fatura cartão" (motivo Cartão). Compras lançadas numa conta do tipo Cartão só ocupam o limite em `vw_cartoes`; ficam fora dos totais do resumo.
 - **Pró-labore**: sai na PJ como "PJ - Pró-labore / lucros pagos" e entra na PF como "PF - Pró-labore / lucros recebidos".
-- **Motivo**: Essencial = custo para viver/operar; Escolha = dá para cortar; Imposto; Dívida = parcela/juros; Poupança = reserva e fundos; Investimento = FIIs; Transferência = entre suas próprias contas.
+- **Motivo**: Essencial = custo para viver/operar; Escolha = dá para cortar; Imposto; Dívida = parcela/juros; Cartão = fatura paga; Poupança = reserva e fundos; Investimento = FIIs; Transferência = entre suas próprias contas.
 
 ## FIIs
 
