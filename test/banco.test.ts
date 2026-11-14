@@ -20,7 +20,7 @@ test('MySQL: esquema, importação idempotente, reclassificação e resumo', { s
   try {
     await criarEsquema(url!).then((d) => d.end()); // idempotente
     const [versoes] = await db.query<RowDataPacket[]>('SELECT versao FROM schema_migrations ORDER BY versao');
-    assert.deepEqual(versoes.map((v) => v.versao), ['001_inicial', '002_familia']);
+    assert.deepEqual(versoes.map((v) => v.versao), ['001_inicial', '002_familia', '003_fatura_cartao']);
     // Os ENUM das migrations são os mesmos do código; parametros com valores padrão some na 002.
     const enumDe = async (tabela: string, coluna: string) => ((await db.query<RowDataPacket[]>('SELECT COLUMN_TYPE AS t FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [tabela, coluna]))[0][0]!.t);
     assert.equal(await enumDe('categorias', 'motivo'), `enum(${MOTIVOS.map((m) => mysql.escape(m)).join(',')})`);
@@ -96,11 +96,14 @@ test('MySQL: esquema, importação idempotente, reclassificação e resumo', { s
     assert.equal((await lerMes(db, '2026-11', 'Eu')).saldos[0]!.saldo, 2239.78);
 
     // Limite disponível: parcela futura já ocupa o limite; fatura paga pela conta o libera.
+    // No resumo, o gasto é só a fatura: a compra no cartão fica fora dos totais.
     const compra = (data: string, valor: number) => ({ data, conta: 'Nubank PF Cartão', categoria: 'PF - Assinaturas', descricao: `Curso ${data}`, valor, id: '' });
     await inserirManual(db, compra('2026-11-12', 100), 'Saída');
     await inserirManual(db, compra('2026-12-12', 100), 'Saída');
     await inserirManual(db, { data: '2026-11-20', conta: 'Nubank PF', categoria: 'PF - Pagamento fatura cartão', descricao: 'Pagamento de fatura', valor: 100, id: '' }, 'Saída');
-    assert.deepEqual((await lerMes(db, '2026-11')).cartoes, [{ conta: 'Nubank PF Cartão', limiteTotal: 650.01, limiteDisponivel: 550.01, compras: 100 }]);
+    const comFatura = await lerMes(db, '2026-11');
+    assert.deepEqual(comFatura.cartoes, [{ conta: 'Nubank PF Cartão', limiteTotal: 650.01, limiteDisponivel: 550.01, compras: 100 }]);
+    assert.deepEqual(comFatura.totais.filter((x) => x.motivo === 'Cartão' || x.categoria === 'PF - Assinaturas').map((x) => [x.categoria, x.total]), [['PF - Pagamento fatura cartão', 100]]);
   } finally {
     await db.query(`DROP DATABASE \`${nome}\``);
     await db.end();
@@ -127,7 +130,7 @@ test('MySQL: banco de antes das migrations é reconhecido e atualizado', { skip:
     const db = await criarEsquema(u.href);
     try {
       const [versoes] = await db.query<RowDataPacket[]>('SELECT versao FROM schema_migrations ORDER BY versao');
-      assert.deepEqual(versoes.map((v) => v.versao), ['001_inicial', '002_familia']);
+      assert.deepEqual(versoes.map((v) => v.versao), ['001_inicial', '002_familia', '003_fatura_cartao']);
       assert.deepEqual((await lerContas(db)), []);
       assert.equal(await existeTabela(db, 'parametros'), true, 'parametros com valores próprios fica para o nova copiar para a pessoa');
       await db.query("INSERT INTO pessoas (apelido, nome) VALUES ('Eu', 'Eu')");

@@ -14,8 +14,8 @@ export function painel(t: Total[]) {
   const proLabore = soma((x) => x.categoria === 'PJ - Pró-labore / lucros pagos');
   const pfEntradas = soma((x) => pf(x) && x.tipo === 'Entrada');
   const motivo = (m: string) => soma((x) => pf(x) && x.motivo === m);
-  const gastos = { essencial: motivo('Essencial'), escolha: motivo('Escolha'), imposto: motivo('Imposto'), divida: motivo('Dívida') };
-  const totalGastos = gastos.essencial + gastos.escolha + gastos.imposto + gastos.divida;
+  const gastos = { essencial: motivo('Essencial'), escolha: motivo('Escolha'), imposto: motivo('Imposto'), divida: motivo('Dívida'), cartao: motivo('Cartão') };
+  const totalGastos = gastos.essencial + gastos.escolha + gastos.imposto + gastos.divida + gastos.cartao;
   const poupanca = motivo('Poupança') + motivo('Investimento');
   const fracao = (x: number) => (pfEntradas > 0 ? x / pfEntradas : 0);
   return {

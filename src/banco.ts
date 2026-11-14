@@ -253,6 +253,8 @@ export async function lerMes(db: Banco, mes: string, pessoa?: string): Promise<D
   const de = `${mes}-01`;
   const q = async <T>(sql: string, params: unknown[] = []) => (await db.query<RowDataPacket[]>(sql, params))[0] as T[];
   const noMes = 'l.data >= ? AND l.data < DATE_ADD(?, INTERVAL 1 MONTH)';
+  // O gasto no cartão é a fatura paga pela conta: compras lançadas no cartão ficam fora dos totais, senão contariam duas vezes.
+  const daConta = " AND l.conta IN (SELECT nome FROM contas WHERE tipo = 'Conta')";
   // Filtro opcional: o mesmo trecho de SQL e o parâmetro que ele pede, vazios na visão da família.
   const so = (sql: string): [string, unknown[]] => (pessoa === undefined ? ['', []] : [` AND ${sql}`, [pessoa]]);
   const [lanc, pLanc] = so(DA_PESSOA);
@@ -266,11 +268,11 @@ export async function lerMes(db: Banco, mes: string, pessoa?: string): Promise<D
   return {
     totais: await q<Total>(
       `SELECT c.escopo, c.tipo, c.motivo, c.nome AS categoria, SUM(l.valor) AS total
-       FROM lancamentos l JOIN categorias c ON c.nome = l.categoria WHERE ${noMes}${lanc} GROUP BY c.nome, c.escopo, c.tipo, c.motivo`,
+       FROM lancamentos l JOIN categorias c ON c.nome = l.categoria WHERE ${noMes}${daConta}${lanc} GROUP BY c.nome, c.escopo, c.tipo, c.motivo`,
       [de, de, ...pLanc],
     ),
     orcamento: await q('SELECT nome AS categoria, motivo, planejado FROM categorias WHERE planejado > 0 ORDER BY nome'),
-    semCategoria: await q(`SELECT l.sentido, COUNT(*) AS quantos, SUM(l.valor) AS total FROM lancamentos l WHERE l.categoria IS NULL AND ${noMes}${lanc} GROUP BY l.sentido`, [de, de, ...pLanc]),
+    semCategoria: await q(`SELECT l.sentido, COUNT(*) AS quantos, SUM(l.valor) AS total FROM lancamentos l WHERE l.categoria IS NULL AND ${noMes}${daConta}${lanc} GROUP BY l.sentido`, [de, de, ...pLanc]),
     saldos: await q(`SELECT conta, data_saldo AS dataSaldo, saldo_atual AS saldo FROM vw_saldos WHERE TRUE${dono} ORDER BY conta`, pDono),
     cartoes: await q(
       `SELECT v.conta, v.limite_total AS limiteTotal, v.limite_disponivel AS limiteDisponivel, COALESCE(SUM(CASE l.sentido WHEN 'Saída' THEN l.valor ELSE -l.valor END), 0) AS compras

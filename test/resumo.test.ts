@@ -12,15 +12,16 @@ const mes: Total[] = [
   t('PF', 'Saída', 'Essencial', 'PF - Mercado', 900),
   t('PF', 'Saída', 'Escolha', 'PF - Lazer', 400),
   t('PF', 'Saída', 'Investimento', 'PF - Aporte em FII', 500),
-  t('PF', 'Saída', 'Transferência', 'PF - Pagamento fatura cartão', 1300),
+  t('PF', 'Saída', 'Cartão', 'PF - Pagamento fatura cartão', 300),
 ];
 
-test('painel: transferências não contam como gasto nem como saída operacional', () => {
+test('painel: transferências não contam como gasto nem como saída operacional; a fatura paga conta', () => {
   const p = painel(mes);
   assert.deepEqual(p.pj, { entradas: 6000, saidasOperacionais: 500, impostos: 360, lucro: 5500, proLabore: 4000, ficaNoCaixa: 1500 });
-  assert.equal(p.pf.gastos, 1300);
+  assert.equal(p.pf.gastos, 1600);
+  assert.equal(p.pf.cartao, 300);
   assert.equal(p.pf.poupanca, 500);
-  assert.equal(p.pf.sobra, 2200);
+  assert.equal(p.pf.sobra, 1900);
   assert.equal(p.pf.taxaPoupanca, 0.125);
   assert.equal(p.pf.pctEscolha, 0.1);
   assert.equal(painel([]).pf.taxaPoupanca, 0);
@@ -37,6 +38,7 @@ test('orcamento: junta planejado e realizado, marca o que estourou', () => {
       ['PF - Aporte em FII', 0, 500, false],
       ['PF - Lazer', 0, 400, false],
       ['PF - Mercado', 800, 900, true],
+      ['PF - Pagamento fatura cartão', 0, 300, false],
       ['PF - Saúde', 200, 0, false],
       ['PJ - Impostos (DAS/Simples)', 0, 360, false],
       ['PJ - Infra e hospedagem', 0, 140, false],

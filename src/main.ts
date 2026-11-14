@@ -180,6 +180,7 @@ async function resumo(db: Banco, mes: string, pessoa: string | undefined) {
     ['   Escolha', brl(p.pf.escolha)],
     ['   Imposto', brl(p.pf.imposto)],
     ['   Dívida', brl(p.pf.divida)],
+    ['   Cartão (faturas pagas)', brl(p.pf.cartao)],
     ['Poupança + investimento', brl(p.pf.poupanca)],
     ['Sobra não alocada', brl(p.pf.sobra)],
     ['Taxa de poupança', pct(p.pf.taxaPoupanca)],
